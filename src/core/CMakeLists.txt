@@ -1,10 +1,11 @@
 # Çekirdek kütüphane: Qt'ye bağımlı DEĞİL; yalnızca C++17 + OpenCV.
 # Böylece GUI olmadan test edilebilir ve başka uygulamalarda yeniden kullanılabilir.
 find_package(Threads REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core imgproc)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio)
 
 add_library(inspector_core STATIC
-    src/DefectDetector.cpp)
+    src/DefectDetector.cpp
+    src/FrameSources.cpp)
 add_library(inspector::core ALIAS inspector_core)
 
 # PUBLIC: bu kütüphaneyi kullanan hedefler (testler, uygulama) de bu başlıkları
