@@ -86,7 +86,7 @@ cmake --build build-tsan && ctest --test-dir build-tsan --output-on-failure
 
 - [x] Proje iskeleti, CMake, GoogleTest
 - [x] `ThreadSafeQueue` (producer–consumer) + testler
-- [ ] `DefectDetector` (gri ton → blur → eşikleme → kontur) + testler
+- [x] `DefectDetector` (gri ton → blur → yerel arka plan farkı → eşikleme → kontur) + testler
 - [ ] `FrameSource` soyutlaması: kamera / video / görüntü klasörü
 - [ ] Capture ve processing thread'leri
 - [ ] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, log)
@@ -95,5 +95,11 @@ cmake --build build-tsan && ctest --test-dir build-tsan --output-on-failure
 
 ## Sınırlamalar
 
-_(Proje ilerledikçe doldurulacak.)_ Bilinen: WSL2 varsayılan olarak USB kameralara erişemez;
-WSL'de video dosyası veya görüntü klasörü modu kullanılmalıdır.
+- WSL2 varsayılan olarak USB kameralara erişemez; WSL'de video dosyası veya görüntü klasörü
+  modu kullanılmalıdır.
+- Dedektör klasik görüntü işlemeye dayanır: düzgün/tekdüze yüzeylerde iyi çalışır, ancak
+  belirgin desenli (ekose, baskılı) kumaşlarda desenin kendisini kusur sanabilir. Bu durumlar
+  için referans görüntüyle karşılaştırma ya da öğrenen bir model (CNN) gerekir.
+- Arka plan penceresinden (`backgroundKernelSize`, varsayılan 101 px) büyük kusurlar
+  arka plan tahminini bozar ve kısmen kaçırılabilir.
+- _(Proje ilerledikçe güncellenecek.)_
