@@ -49,6 +49,14 @@ public:
     /// Hedef kare hızı. Bilinmiyorsa 0.
     virtual double fps() const noexcept = 0;
 
+    /// Bağlantısı kopabilen kaynaklar (kamera) true döner. next() başarısız olunca
+    /// capture thread'i reopen() ile kaynağı yeniden açmayı dener. Dosya kaynaklarında
+    /// akışın bitmesi normaldir, yeniden açılmaz.
+    virtual bool canReopen() const noexcept { return false; }
+
+    /// Kaynağı kapatıp yeniden açar. Başarılıysa true. Sıra numaraları devam eder.
+    virtual bool reopen() { return false; }
+
 protected:
     FrameSource() = default;
 

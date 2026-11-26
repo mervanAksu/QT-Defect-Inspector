@@ -15,6 +15,7 @@ class QPlainTextEdit;
 class QPushButton;
 class QSlider;
 class QSpinBox;
+class QSplitter;
 
 namespace inspector {
 
@@ -36,6 +37,7 @@ public:
     explicit MainWindow(QWidget* parent = nullptr);
 
     void setSource(const QString& source);
+    QString source() const;
     void setThreshold(int threshold);
     /// Komut satırından ağ yayınını açmak için; arayüzdeki kutucukları işaretler.
     void enableTcp(quint16 port);
@@ -44,6 +46,10 @@ public:
 public slots:
     void start();
     void stop();
+
+protected:
+    /// Pencere kapanırken ayarları kaydeder (QSettings).
+    void closeEvent(QCloseEvent* event) override;
 
 private slots:
     void browseFolder();
@@ -59,6 +65,8 @@ private:
     QWidget* buildControlPanel();
     QWidget* buildNetworkBox();
     void updateNetworkStatus();
+    void loadSettings();
+    void saveSettings() const;
     void setRunningState(bool running);
     void resetStatistics();
     void appendLog(const QString& text, const QColor& color = {});
@@ -69,6 +77,7 @@ private:
     std::uint64_t m_totalFrames = 0;
     std::uint64_t m_defectiveFrames = 0;
 
+    QSplitter* m_splitter = nullptr;
     ImageView* m_imageView = nullptr;
     QLineEdit* m_sourceEdit = nullptr;
     QPushButton* m_browseFolderButton = nullptr;

@@ -14,7 +14,9 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QSlider>
+#include <QSettings>
 #include <QSpinBox>
+#include <QStandardPaths>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTemporaryDir>
@@ -42,6 +44,8 @@ private slots:
     void sliderAndSpinBoxStayInSync();
     void tcpCheckboxPublishesLiveResults();
     void invalidUdpHostIsRejected();
+    void settingsAreRestoredAfterRestart();
+    void savedTcpServerStartsOnLaunch();
 
 private:
     template <typename T>
@@ -60,6 +64,12 @@ private:
 
 void MainWindowTest::initTestCase()
 {
+    // QSettings testlerde kullanıcının gerçek ~/.config'ine dokunmasın: test modunda
+    // Qt ayrı bir klasör kullanır (~/.qttest/...).
+    QStandardPaths::setTestModeEnabled(true);
+    QCoreApplication::setOrganizationName("DefectInspectorTests");
+    QCoreApplication::setApplicationName("ui_tests");
+
     QVERIFY(m_tmp.isValid());
     // Her ikisinde de kusur olan iki örnek görüntü.
     const auto a = samples::generateFabric({samples::DefectKind::Stain}, 1);
@@ -70,6 +80,7 @@ void MainWindowTest::initTestCase()
 
 void MainWindowTest::init()
 {
+    QSettings().clear();  // her test temiz ayarlarla başlasın
     m_window = new MainWindow;
     m_window->show();
 }
@@ -200,6 +211,52 @@ void MainWindowTest::invalidUdpHostIsRejected()
     QVERIFY(!child<QCheckBox>("udpCheck")->isChecked());  // geri alındı
     QVERIFY(child<QLineEdit>("udpHostEdit")->isEnabled());
     QVERIFY(child<QPlainTextEdit>("logView")->toPlainText().contains("Invalid UDP host"));
+}
+
+void MainWindowTest::settingsAreRestoredAfterRestart()
+{
+    child<QLineEdit>("sourceEdit")->setText("/data/line3/camera-dump");
+    child<QCheckBox>("loopCheck")->setChecked(false);
+    child<QSlider>("thresholdSlider")->setValue(77);
+    child<QSpinBox>("tcpPortSpin")->setValue(6001);
+    child<QLineEdit>("udpHostEdit")->setText("10.0.0.5");
+    child<QSpinBox>("udpPortSpin")->setValue(6002);
+
+    m_window->close();  // closeEvent -> ayarlar kaydedilir
+    delete m_window;
+    m_window = new MainWindow;  // "uygulamayı yeniden başlat"
+
+    QCOMPARE(child<QLineEdit>("sourceEdit")->text(), QString("/data/line3/camera-dump"));
+    QVERIFY(!child<QCheckBox>("loopCheck")->isChecked());
+    QCOMPARE(child<QSlider>("thresholdSlider")->value(), 77);
+    QCOMPARE(child<QSpinBox>("thresholdSpin")->value(), 77);
+    QCOMPARE(child<QSpinBox>("tcpPortSpin")->value(), 6001);
+    QCOMPARE(child<QLineEdit>("udpHostEdit")->text(), QString("10.0.0.5"));
+    QCOMPARE(child<QSpinBox>("udpPortSpin")->value(), 6002);
+    QVERIFY(!child<QCheckBox>("tcpCheck")->isChecked());
+}
+
+void MainWindowTest::savedTcpServerStartsOnLaunch()
+{
+    quint16 port = 0;
+    {
+        QTcpServer probe;
+        QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+        port = probe.serverPort();
+    }
+    delete m_window;
+    {
+        QSettings settings;
+        settings.setValue("network/tcpEnabled", true);
+        settings.setValue("network/tcpPort", port);
+    }
+    m_window = new MainWindow;
+
+    QVERIFY(child<QCheckBox>("tcpCheck")->isChecked());
+    QVERIFY(child<QLabel>("networkLabel")->text().contains(QString::number(port)));
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, port);
+    QVERIFY(client.waitForConnected(3000));  // sunucu gerçekten dinliyor
 }
 
 QTEST_MAIN(MainWindowTest)

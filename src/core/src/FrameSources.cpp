@@ -60,14 +60,23 @@ ImageFolderSource::ImageFolderSource(const fs::path& folder, bool loop, double f
 
 bool ImageFolderSource::readImage(cv::Mat& out)
 {
-    if (m_position >= m_files.size()) {
-        if (!m_loop) {
-            return false;
+    // Okunamayan (bozuk, yarım kopyalanmış, silinmiş) bir dosya tüm akışı durdurmasın:
+    // atla, say ve sıradakine geç. Ama klasördeki her dosya üst üste okunamıyorsa
+    // sonsuz döngüye girmemek için vazgeç.
+    for (std::size_t attempts = 0; attempts < m_files.size(); ++attempts) {
+        if (m_position >= m_files.size()) {
+            if (!m_loop) {
+                return false;
+            }
+            m_position = 0;
         }
-        m_position = 0;
+        out = cv::imread(m_files[m_position++].string(), cv::IMREAD_COLOR);
+        if (!out.empty()) {
+            return true;
+        }
+        ++m_skippedFiles;
     }
-    out = cv::imread(m_files[m_position++].string(), cv::IMREAD_COLOR);
-    return !out.empty();  // bozuk dosya -> akışı sonlandır
+    return false;
 }
 
 // --- VideoFileSource -------------------------------------------------------------
@@ -124,6 +133,18 @@ std::string CameraSource::description() const
 bool CameraSource::readImage(cv::Mat& out)
 {
     return m_capture.read(out);
+}
+
+bool CameraSource::reopen()
+{
+    // Kablo çıkıp takıldığında /dev/videoN düğümü yeniden oluşur; eski tanıtıcıyı
+    // bırakıp baştan açmak gerekir.
+    m_capture.release();
+    if (!m_capture.open(m_deviceIndex, cv::CAP_V4L2)) {
+        return false;
+    }
+    m_fps = m_capture.get(cv::CAP_PROP_FPS);
+    return true;
 }
 
 // --- Fabrika ---------------------------------------------------------------------

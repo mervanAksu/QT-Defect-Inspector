@@ -99,6 +99,33 @@ TEST_F(FrameSourceTest, FolderThrowsWhenMissingOrEmpty)
     EXPECT_THROW(ImageFolderSource{m_dir}, std::runtime_error);  // klasör var ama boş
 }
 
+TEST_F(FrameSourceTest, FolderSkipsUnreadableImages)
+{
+    writeImage("a.png", 50);
+    std::ofstream(m_dir / "b.png") << "half-copied file, not a PNG";
+    writeImage("c.png", 150);
+
+    ImageFolderSource source(m_dir, /*loop=*/false);
+    const auto first = source.next();
+    const auto second = source.next();  // b.png atlanır, c.png gelir
+    ASSERT_TRUE(first && second);
+    EXPECT_EQ(grayAt00(*first), 50);
+    EXPECT_EQ(grayAt00(*second), 150);
+    EXPECT_EQ(second->index, 1u);  // sıra numarasında boşluk yok
+    EXPECT_EQ(source.next(), std::nullopt);
+    EXPECT_EQ(source.skippedFiles(), 1u);
+}
+
+TEST_F(FrameSourceTest, FolderOfOnlyUnreadableImagesEndsInsteadOfLooping)
+{
+    std::ofstream(m_dir / "x.png") << "broken";
+    std::ofstream(m_dir / "y.jpg") << "broken";
+
+    ImageFolderSource source(m_dir, /*loop=*/true);  // loop açıkken bile sonsuz döngü olmamalı
+    EXPECT_EQ(source.next(), std::nullopt);
+    EXPECT_EQ(source.skippedFiles(), 2u);
+}
+
 TEST_F(FrameSourceTest, FolderIsNotLiveAndReportsFps)
 {
     writeImage("x.png", 10);

@@ -37,6 +37,14 @@ public:
     /// çalışıyorsa false döner (hata errorOccurred ile de bildirilir).
     bool start(const QString& sourceSpec, bool loop = true);
 
+    /// Hazır bir kaynakla başlatır (bağımlılık enjeksiyonu). Testler bununla gerçek
+    /// kamera olmadan "kopan kamera" gibi senaryoları taklit edebilir; ileride bir
+    /// endüstriyel kamera SDK'sının kaynağı da böyle verilebilir.
+    bool start(std::unique_ptr<FrameSource> source);
+
+    /// Kopan canlı kaynağı yeniden açma bekleme süreleri (bir sonraki start()'ta geçerli).
+    void setReconnectPolicy(const ReconnectPolicy& policy) { m_reconnectPolicy = policy; }
+
     /// Thread'leri durdurur ve bitmelerini bekler. Çalışmıyorsa hiçbir şey yapmaz.
     void stop();
 
@@ -50,6 +58,10 @@ signals:
     void started(const QString& sourceDescription);
     void resultReady(const inspector::InspectionResult& result);
     void errorOccurred(const QString& message);
+    /// Canlı kaynak (kamera) kare vermeyi kesti; arka planda yeniden açılmaya çalışılıyor.
+    void sourceLost(const QString& source);
+    /// Kaynak `attempts`. denemede yeniden açıldı; akış devam ediyor.
+    void sourceRecovered(int attempts);
     /// Hem stop() ile hem de kaynak kendiliğinden bittiğinde (loop=false) yayınlanır.
     void stopped();
 
@@ -58,6 +70,7 @@ private:
     void onProcessingFinished(std::uint64_t generation);
 
     DetectorConfig m_config;
+    ReconnectPolicy m_reconnectPolicy;
     std::shared_ptr<ThreadSafeQueue<Frame>> m_queue;  // iki thread de kullanır
     std::unique_ptr<CaptureThread> m_capture;
     std::unique_ptr<ProcessingThread> m_processing;

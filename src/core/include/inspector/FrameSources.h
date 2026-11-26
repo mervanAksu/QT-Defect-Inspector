@@ -22,6 +22,8 @@ public:
     double fps() const noexcept override { return m_fps; }
 
     std::size_t imageCount() const noexcept { return m_files.size(); }
+    /// Okunamadığı için atlanan dosya sayısı (aynı dosya her turda tekrar sayılır).
+    std::size_t skippedFiles() const noexcept { return m_skippedFiles; }
 
 protected:
     bool readImage(cv::Mat& out) override;
@@ -30,6 +32,7 @@ private:
     std::filesystem::path m_folder;
     std::vector<std::filesystem::path> m_files;
     std::size_t m_position = 0;
+    std::size_t m_skippedFiles = 0;
     bool m_loop;
     double m_fps;
 };
@@ -61,6 +64,8 @@ public:
     std::string description() const override;
     bool isLive() const noexcept override { return true; }
     double fps() const noexcept override { return m_fps; }
+    bool canReopen() const noexcept override { return true; }
+    bool reopen() override;
 
 protected:
     bool readImage(cv::Mat& out) override;

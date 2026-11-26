@@ -114,6 +114,24 @@ WSL2'de (Windows 11) pencere WSLg sayesinde doğrudan Windows masaüstünde aç�
 QT_QPA_PLATFORM=offscreen ./build/src/app/defect_inspector --screenshot docs/screenshot.png
 ```
 
+## Sağlamlık
+
+Üretim hattında uygulamanın, operatör müdahalesi olmadan çalışmaya devam etmesi gerekir:
+
+- **Kopan kamera:** Canlı bir kaynak kare vermeyi keserse (kablo çıktı, GigE kamera yeniden
+  başladı) akış durmaz. Capture thread'i kaynağı üstel geri çekilmeyle (250 ms → … → 4 s)
+  yeniden açmayı dener; log'da turuncu "Source lost" ve yeşil "Source recovered after N attempt(s)"
+  görünür. Bekleme sırasında Stop'a basılırsa ~20 ms içinde durur (bekleme dilimlere bölünmüştür).
+- **Bozuk görüntü dosyası:** Klasördeki okunamayan bir dosya atlanır ve sayılır; akış devam eder.
+  Klasördeki tüm dosyalar bozuksa sonsuz döngüye girmeden biter.
+- **Ayarların kaydı (`QSettings`):** Kaynak, döngü, eşik, TCP/UDP ayarları, pencere boyutu ve
+  ayraç konumu kapanışta kaydedilir (`~/.config/DefectInspector/Defect Inspector.conf`) ve
+  açılışta geri yüklenir. TCP sunucusu açık kaydedildiyse açılışta kendiliğinden dinlemeye başlar.
+  Öncelik: komut satırı > kayıtlı ayar > varsayılan.
+- **Test edilebilirlik:** `InspectionPipeline::start(std::unique_ptr<FrameSource>)` hazır bir
+  kaynak kabul eder. Testler bununla gerçek kamera olmadan "5 kare sonra kopan, 3. denemede geri
+  gelen" sahte bir kamerayı enjekte eder.
+
 ## Ağ üzerinden sonuç yayını (TCP / UDP)
 
 Her işlenen kare için tek satırlık bir JSON mesajı yayınlanır (**JSON Lines**). Arayüzdeki
@@ -246,13 +264,14 @@ geliştirme ortamıyla aynı dağıtımda (Ubuntu 24.04) üç iş çalıştırı
 - [x] TCP/UDP ile sonuç yayını (JSON Lines, `QTcpServer` / `QUdpSocket`) + ağ testleri
 - [x] Alıcı istemciler (C++/Qt ve Python), otomatik yeniden bağlanma + testleri
 - [x] GitHub Actions CI: `-Werror` derleme, ASan + UBSan, ThreadSanitizer
-- [ ] Sağlamlık: kaynak koparsa toparlanma, ayarların kaydı (`QSettings`)
+- [x] Sağlamlık: kopan kamerayı yeniden bağlama, bozuk dosyaları atlama, `QSettings`
 - [ ] Sınırlamalar ve son README
 
 ## Sınırlamalar
 
 - WSL2 varsayılan olarak USB kameralara erişemez; WSL'de video dosyası veya görüntü klasörü
-  modu kullanılmalıdır.
+  modu kullanılmalıdır. Kamera kopması ve yeniden bağlanma bu yüzden gerçek donanımla değil,
+  sahte bir kamera kaynağıyla (testlerde) doğrulandı.
 - Dedektör klasik görüntü işlemeye dayanır: düzgün/tekdüze yüzeylerde iyi çalışır, ancak
   belirgin desenli (ekose, baskılı) kumaşlarda desenin kendisini kusur sanabilir. Bu durumlar
   için referans görüntüyle karşılaştırma ya da öğrenen bir model (CNN) gerekir.
