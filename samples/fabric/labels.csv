@@ -1,0 +1,13 @@
+file,defect_count,defects
+01_clean.jpg,0,
+02_stain.jpg,1,stain
+03_hole.jpg,1,hole
+04_tear.jpg,1,tear
+05_clean.jpg,0,
+06_stain_hole.jpg,2,stain|hole
+07_tear_stain.jpg,2,tear|stain
+08_clean.jpg,0,
+09_two_holes.jpg,2,hole|hole
+10_stain_tear_hole.jpg,3,stain|tear|hole
+11_clean.jpg,0,
+12_stain.jpg,1,stain
