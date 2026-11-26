@@ -3,6 +3,8 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QDir>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QTimer>
 
 #include <cstdio>
@@ -10,6 +12,9 @@
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
+    // Organizasyon + uygulama adı QSettings'in dosya yolunu belirler:
+    // ~/.config/DefectInspector/Defect Inspector.conf
+    QApplication::setOrganizationName("DefectInspector");
     QApplication::setApplicationName("Defect Inspector");
     QApplication::setApplicationVersion(PROJECT_VERSION);
 
@@ -38,13 +43,21 @@ int main(int argc, char* argv[])
     parser.addOption(delayOption);
     parser.process(app);
 
-    inspector::MainWindow window;
+    // Ekran görüntüsü modunda kullanıcının kayıtlı ayarlarını ne oku ne yaz: README
+    // görüntüleri her makinede aynı çıksın. Ayarları geçici, boş bir klasöre yönlendir.
+    QTemporaryDir isolatedSettings;
+    if (parser.isSet(screenshotOption)) {
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, isolatedSettings.path());
+    }
 
-    // Kaynak verilmediyse depodaki örnek kumaş görüntülerini öner.
+    inspector::MainWindow window;  // kaydedilmiş ayarları yükler
+
+    // Öncelik: komut satırı > kaydedilmiş ayar > depodaki örnek klasör.
     const QStringList args = parser.positionalArguments();
     if (!args.isEmpty()) {
         window.setSource(args.first());
-    } else if (QDir(INSPECTOR_SAMPLES_DIR).exists()) {
+    } else if (window.source().isEmpty() && QDir(INSPECTOR_SAMPLES_DIR).exists()) {
         window.setSource(INSPECTOR_SAMPLES_DIR);
     }
     if (parser.isSet(thresholdOption)) {

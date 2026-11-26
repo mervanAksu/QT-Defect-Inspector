@@ -14,6 +14,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSettings>
 #include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
@@ -41,12 +42,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     topLayout->addWidget(m_imageView, 1);  // stretch=1: boş alanı görüntü alır
     topLayout->addWidget(buildControlPanel());
 
-    auto* splitter = new QSplitter(Qt::Vertical);
-    splitter->addWidget(top);
-    splitter->addWidget(m_logView);
-    splitter->setStretchFactor(0, 4);
-    splitter->setStretchFactor(1, 1);
-    setCentralWidget(splitter);  // MainWindow sahipliği devralır
+    m_splitter = new QSplitter(Qt::Vertical);
+    m_splitter->addWidget(top);
+    m_splitter->addWidget(m_logView);
+    m_splitter->setStretchFactor(0, 4);
+    m_splitter->setStretchFactor(1, 1);
+    setCentralWidget(m_splitter);  // MainWindow sahipliği devralır
 
     // Pipeline -> pencere. Pipeline bu (GUI) thread'inde yaşadığı için bunlar
     // doğrudan bağlantıdır; thread geçişi pipeline'ın içinde, queued olarak yapılır.
@@ -54,6 +55,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(&m_pipeline, &InspectionPipeline::stopped, this, &MainWindow::onStopped);
     connect(&m_pipeline, &InspectionPipeline::resultReady, this, &MainWindow::onResult);
     connect(&m_pipeline, &InspectionPipeline::errorOccurred, this, &MainWindow::onError);
+    connect(&m_pipeline, &InspectionPipeline::sourceLost, this, [this](const QString& source) {
+        appendLog(tr("Source lost: %1, reconnecting...").arg(source), QColor(220, 140, 0));
+        statusBar()->showMessage(tr("Source lost, reconnecting..."));
+    });
+    connect(&m_pipeline, &InspectionPipeline::sourceRecovered, this, [this](int attempts) {
+        appendLog(tr("Source recovered after %n attempt(s)", nullptr, attempts),
+                  QColor(40, 150, 60));
+        statusBar()->showMessage(tr("Running"));
+    });
 
     // Her sonuç ağa da gider. Pipeline ve publisher aynı (GUI) thread'inde: doğrudan bağlantı.
     connect(&m_pipeline, &InspectionPipeline::resultReady, &m_publisher,
@@ -70,9 +80,58 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 
     resetStatistics();
     setRunningState(false);
+    resize(1100, 720);
+    loadSettings();  // varsayılanları kaydedilmiş değerlerle ez (pencere boyutu dahil)
     updateNetworkStatus();
     statusBar()->showMessage(tr("Ready"));
-    resize(1100, 720);
+}
+
+// --- Ayarlar (QSettings) -------------------------------------------------------
+//
+// QSettings, platformun yerel yerinde saklar: Linux'ta ~/.config/<Organizasyon>/<Uygulama>.conf
+// (INI biçimi). Organizasyon ve uygulama adı main.cpp'de QCoreApplication'a verilir.
+
+void MainWindow::loadSettings()
+{
+    const QSettings settings;
+
+    const QString savedSource = settings.value("source/path").toString();
+    if (!savedSource.isEmpty()) {
+        m_sourceEdit->setText(savedSource);
+    }
+    m_loopCheck->setChecked(settings.value("source/loop", true).toBool());
+    m_thresholdSlider->setValue(settings.value("detector/threshold", m_pipeline.threshold()).toInt());
+
+    m_tcpPortSpin->setValue(settings.value("network/tcpPort", 5555).toInt());
+    m_udpHostEdit->setText(settings.value("network/udpHost", "127.0.0.1").toString());
+    m_udpPortSpin->setValue(settings.value("network/udpPort", 5556).toInt());
+    // Kutucukları en son işaretle: toggled sinyali sunucuyu kaydedilmiş portla başlatır.
+    m_tcpCheck->setChecked(settings.value("network/tcpEnabled", false).toBool());
+    m_udpCheck->setChecked(settings.value("network/udpEnabled", false).toBool());
+
+    restoreGeometry(settings.value("window/geometry").toByteArray());
+    m_splitter->restoreState(settings.value("window/splitter").toByteArray());
+}
+
+void MainWindow::saveSettings() const
+{
+    QSettings settings;
+    settings.setValue("source/path", m_sourceEdit->text().trimmed());
+    settings.setValue("source/loop", m_loopCheck->isChecked());
+    settings.setValue("detector/threshold", m_thresholdSlider->value());
+    settings.setValue("network/tcpEnabled", m_tcpCheck->isChecked());
+    settings.setValue("network/tcpPort", m_tcpPortSpin->value());
+    settings.setValue("network/udpEnabled", m_udpCheck->isChecked());
+    settings.setValue("network/udpHost", m_udpHostEdit->text().trimmed());
+    settings.setValue("network/udpPort", m_udpPortSpin->value());
+    settings.setValue("window/geometry", saveGeometry());
+    settings.setValue("window/splitter", m_splitter->saveState());
+}
+
+void MainWindow::closeEvent(QCloseEvent* event)
+{
+    saveSettings();
+    QMainWindow::closeEvent(event);
 }
 
 QWidget* MainWindow::buildControlPanel()
@@ -282,6 +341,11 @@ void MainWindow::updateNetworkStatus()
 void MainWindow::setSource(const QString& source)
 {
     m_sourceEdit->setText(source);
+}
+
+QString MainWindow::source() const
+{
+    return m_sourceEdit->text().trimmed();
 }
 
 void MainWindow::setThreshold(int threshold)
