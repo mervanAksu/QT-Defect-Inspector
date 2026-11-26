@@ -30,10 +30,23 @@ bool InspectionPipeline::start(const QString& sourceSpec, bool loop)
         emit errorOccurred(QString::fromStdString(e.what()));
         return false;
     }
+    return start(std::move(source));
+}
+
+bool InspectionPipeline::start(std::unique_ptr<FrameSource> source)
+{
+    if (isRunning()) {
+        emit errorOccurred(tr("Pipeline is already running"));
+        return false;
+    }
+    if (!source) {
+        emit errorOccurred(tr("No frame source"));
+        return false;
+    }
     const QString description = QString::fromStdString(source->description());
 
     m_queue = std::make_shared<ThreadSafeQueue<Frame>>(kQueueCapacity);
-    m_capture = std::make_unique<CaptureThread>(std::move(source), m_queue);
+    m_capture = std::make_unique<CaptureThread>(std::move(source), m_queue, m_reconnectPolicy);
     m_processing = std::make_unique<ProcessingThread>(m_queue, m_config);
     const std::uint64_t generation = ++m_generation;
 
@@ -47,6 +60,10 @@ bool InspectionPipeline::start(const QString& sourceSpec, bool loop)
             &InspectionPipeline::errorOccurred, Qt::QueuedConnection);
     connect(m_capture.get(), &CaptureThread::errorOccurred, this,
             &InspectionPipeline::errorOccurred, Qt::QueuedConnection);
+    connect(m_capture.get(), &CaptureThread::sourceLost, this, &InspectionPipeline::sourceLost,
+            Qt::QueuedConnection);
+    connect(m_capture.get(), &CaptureThread::sourceRecovered, this,
+            &InspectionPipeline::sourceRecovered, Qt::QueuedConnection);
     // Kaynak bitince capture kuyruğu kapatır, processing kalanları işleyip biter.
     connect(m_processing.get(), &QThread::finished, this,
             [this, generation] { onProcessingFinished(generation); }, Qt::QueuedConnection);
