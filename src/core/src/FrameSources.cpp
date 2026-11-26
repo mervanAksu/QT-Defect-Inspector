@@ -1,6 +1,7 @@
 #include "inspector/FrameSources.h"
 
 #include <opencv2/imgcodecs.hpp>
+#include <opencv2/videoio/registry.hpp>
 
 #include <algorithm>
 #include <cctype>
@@ -71,10 +72,21 @@ bool ImageFolderSource::readImage(cv::Mat& out)
 
 // --- VideoFileSource -------------------------------------------------------------
 
-VideoFileSource::VideoFileSource(const fs::path& file, bool loop)
-    : m_file(file), m_capture(file.string()), m_loop(loop)
+VideoFileSource::VideoFileSource(const fs::path& file, bool loop) : m_file(file), m_loop(loop)
 {
-    if (!m_capture.isOpened()) {
+    // Dosya yoksa OpenCV'ye hiç sormadan net bir hata ver. Aksi halde OpenCV açamadığı
+    // dosya için TÜM arka uçları sırayla dener (GStreamer, gphoto2 kamera tarayıcısı...):
+    // yavaş (~1 sn), konsola uyarı basar ve bu kütüphaneler bellek sızdırır (ASan'da görüldü).
+    if (!fs::is_regular_file(file)) {
+        throw std::runtime_error("Video file not found: " + file.string());
+    }
+    // FFmpeg varsa YALNIZCA onu kullan: öngörülebilir ve Ubuntu'nun OpenCV paketinde var.
+    // FFmpeg açamıyorsa dosya bozuktur; diğer arka uçları denemek bir şey kazandırmaz,
+    // sadece yukarıdaki yavaşlık ve sızıntıları geri getirir. FFmpeg'siz OpenCV
+    // derlemelerinde otomatik seçime bırakıyoruz.
+    const int api =
+        cv::videoio_registry::hasBackend(cv::CAP_FFMPEG) ? cv::CAP_FFMPEG : cv::CAP_ANY;
+    if (!m_capture.open(file.string(), api)) {
         throw std::runtime_error("Cannot open video file: " + file.string());
     }
     m_fps = m_capture.get(cv::CAP_PROP_FPS);
