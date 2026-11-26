@@ -7,6 +7,11 @@ TCP/UDP üzerinden başka bir istemciye gönderir.
 
 > 🚧 Geliştirme aşamasında. Durum için [Yol haritası](#yol-haritası) bölümüne bakın.
 
+![Defect Inspector ekran görüntüsü](docs/screenshot.png)
+
+*Sentetik kumaş örnekleri üzerinde canlı tespit: kusurlar kırmızı kutuyla işaretlenir, sağda eşik
+ayarı ve istatistikler, altta kusurlu karelerin logu.*
+
 ## Mimari
 
 ```mermaid
@@ -60,12 +65,13 @@ defect-inspector/
 ├── src/
 │   ├── core/               # Qt'siz çekirdek: ThreadSafeQueue, DefectDetector, FrameSource
 │   ├── pipeline/           # Qt Core: CaptureThread, ProcessingThread, InspectionPipeline
-│   ├── app/                # Qt Widgets uygulaması: MainWindow, ResultPublisher
+│   ├── app/                # Qt Widgets uygulaması: MainWindow, ImageView, main.cpp
 │   └── receiver/           # sonuçları dinleyen basit istemci
-├── tests/                  # GoogleTest birim testleri + Qt Test entegrasyon testleri
-├── samples/                # örnek kumaş görüntüleri / videoları
+├── tools/                  # sentetik kumaş görüntüsü üreteci (generate_samples)
+├── tests/                  # GoogleTest birim testleri + Qt Test entegrasyon/GUI testleri
+├── samples/fabric/         # 12 örnek kumaş görüntüsü + labels.csv (beklenen kusur sayıları)
 ├── scripts/                # ortam kurulum betikleri
-└── docs/                   # ekran görüntüleri, ek dokümanlar
+└── docs/                   # ekran görüntüleri
 ```
 
 ## Kurulum (Ubuntu 24.04 / WSL2)
@@ -82,6 +88,26 @@ Kurulan paketler: `build-essential gdb cmake ninja-build qt6-base-dev libopencv-
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
+```
+
+GUI testleri ekran gerektirmez; ctest onları `QT_QPA_PLATFORM=offscreen` ile çalıştırır.
+
+## Çalıştırma
+
+```bash
+./build/src/app/defect_inspector                         # örnek kumaş klasörü önceden seçili gelir
+./build/src/app/defect_inspector samples/fabric --start  # hemen başlat
+./build/src/app/defect_inspector video.mp4 -t 45         # video dosyası, eşik 45
+./build/src/app/defect_inspector 0                       # kamera /dev/video0 (WSL2'de yok)
+```
+
+WSL2'de (Windows 11) pencere WSLg sayesinde doğrudan Windows masaüstünde açılır.
+
+Örnek görüntüleri yeniden üretmek ve README ekran görüntüsünü güncellemek için:
+
+```bash
+./build/tools/generate_samples samples/fabric
+QT_QPA_PLATFORM=offscreen ./build/src/app/defect_inspector --screenshot docs/screenshot.png
 ```
 
 ### ThreadSanitizer ile data race avı
@@ -111,9 +137,10 @@ Notlar:
 - [x] `DefectDetector` (gri ton → blur → yerel arka plan farkı → eşikleme → kontur) + testler
 - [x] `FrameSource` soyutlaması: kamera / video / görüntü klasörü + fabrika fonksiyonu
 - [x] Capture ve processing thread'leri (`QThread`, queued signal/slot, atomik eşik) + Qt Test testleri
-- [ ] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, log)
+- [x] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, istatistikler, log) + GUI testleri
+- [x] Sentetik kumaş örnekleri + uçtan uca tespit testleri
 - [ ] TCP/UDP ile sonuç yayını + receiver istemcisi
-- [ ] Ekran görüntüleri, sınırlamalar, CI
+- [ ] Sınırlamalar, CI
 
 ## Sınırlamalar
 
