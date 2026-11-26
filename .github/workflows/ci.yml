@@ -1,0 +1,110 @@
+# Her push (main) ve pull request'te: derle, tüm testleri çalıştır, sanitizer'larla kontrol et.
+# Runner, geliştirme ortamıyla aynı dağıtım (Ubuntu 24.04: Qt 6.4, OpenCV 4.6, GCC 13).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:  # Actions sekmesinden elle çalıştırmak için
+
+# En az yetki: CI yalnızca kodu okur.
+permissions:
+  contents: read
+
+# Aynı branch'e yeni bir push gelirse eski, artık anlamsız çalıştırmayı iptal et.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APT_PACKAGES: >-
+    build-essential cmake ninja-build pkg-config
+    qt6-base-dev libgl1-mesa-dev libopencv-dev libgtest-dev python3
+
+jobs:
+  build-and-test:
+    name: Build & test (GCC 13, Release, -Werror)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $APT_PACKAGES
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DINSPECTOR_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 120
+
+  sanitizers:
+    name: AddressSanitizer + UBSan (all tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $APT_PACKAGES
+
+      - name: Configure
+        # -fno-sanitize-recover: UBSan normalde yalnızca uyarır; bununla ilk hatada test başarısız olur.
+        run: >-
+          cmake -S . -B build-asan -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DINSPECTOR_SANITIZER=address,undefined
+          -DCMAKE_CXX_FLAGS=-fno-sanitize-recover=all
+
+      - name: Build
+        run: cmake --build build-asan
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1:check_initialization_order=1
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/lsan.supp:print_suppressions=0
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir build-asan --output-on-failure --timeout 300
+
+  thread-sanitizer:
+    name: ThreadSanitizer (core tests)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends $APT_PACKAGES
+
+      - name: Configure
+        run: >-
+          cmake -S . -B build-tsan -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DINSPECTOR_SANITIZER=thread
+
+      # Yeni çekirdeklerde ASLR, GCC 13'ün TSan'ı ile uyumsuz ("unexpected memory mapping").
+      # setarch -R yalnızca bu komut için ASLR'yi kapatır. Derleme de TSan'lı test programlarını
+      # çalıştırır (gtest_discover_tests), bu yüzden o adım da setarch altında.
+      - name: Build
+        run: setarch -R cmake --build build-tsan
+
+      # Yalnızca core_tests: Ubuntu'nun Qt paketi TSan ile derlenmediği için Qt tabanlı
+      # testlerde TSan yanlış alarm verir (bkz. README). tsan.supp yalnızca üçüncü parti
+      # kütüphaneleri (TBB, GDAL) susturur.
+      - name: Test
+        env:
+          TSAN_OPTIONS: suppressions=${{ github.workspace }}/tsan.supp:halt_on_error=1
+        run: setarch -R ./build-tsan/tests/core_tests

@@ -1,0 +1,11 @@
+# LeakSanitizer suppressions — ONLY one-time allocations inside third-party libraries.
+# Never add our own code here: a leak in src/ must be fixed, not suppressed.
+#
+# Usage:  LSAN_OPTIONS="suppressions=$PWD/lsan.supp" ctest --test-dir build-asan
+#
+# libproxy: unless a socket is told otherwise, Qt Network asks libproxy for the system
+# proxy once per process, and libproxy keeps ~141 bytes for the life of the process.
+# Our publisher and receiver use QNetworkProxy::NoProxy, but the tests also use plain
+# QTcpSocket clients (standing in for any third-party client), which trigger it.
+leak:libpxbackend-1.0.so
+leak:libproxy.so.1

@@ -146,7 +146,19 @@ TEST_F(FrameSourceTest, VideoLoopsBackToStart)
 
 TEST_F(FrameSourceTest, VideoThrowsForMissingFile)
 {
-    EXPECT_THROW(VideoFileSource(m_dir / "missing.mp4"), std::runtime_error);
+    // Dosya yoksa OpenCV arka uçlarını denemeden, açık bir mesajla hemen başarısız olmalı.
+    try {
+        VideoFileSource source(m_dir / "missing.mp4");
+        FAIL() << "expected std::runtime_error";
+    } catch (const std::runtime_error& e) {
+        EXPECT_NE(std::string(e.what()).find("not found"), std::string::npos) << e.what();
+    }
+}
+
+TEST_F(FrameSourceTest, VideoThrowsForCorruptFile)
+{
+    std::ofstream(m_dir / "corrupt.mp4") << "this is not a video";
+    EXPECT_THROW(VideoFileSource(m_dir / "corrupt.mp4"), std::runtime_error);
 }
 
 // --- Fabrika ---------------------------------------------------------------------

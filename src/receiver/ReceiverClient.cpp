@@ -1,6 +1,7 @@
 #include "ReceiverClient.h"
 
 #include <QNetworkDatagram>
+#include <QNetworkProxy>
 
 #include <algorithm>
 
@@ -9,6 +10,9 @@ namespace inspector {
 ReceiverClient::ReceiverClient(QObject* parent) : QObject(parent)
 {
     qRegisterMetaType<protocol::Message>();
+    // Yayıncıya doğrudan bağlan; sistem proxy'si kullanma (bkz. ResultPublisher).
+    m_socket.setProxy(QNetworkProxy::NoProxy);
+    m_udp.setProxy(QNetworkProxy::NoProxy);
 
     m_reconnectTimer.setSingleShot(true);
     connect(&m_reconnectTimer, &QTimer::timeout, this, &ReceiverClient::attemptConnection);

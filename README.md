@@ -1,5 +1,7 @@
 # Defect Inspector
 
+[![CI](https://github.com/mervanAksu/QT-Defect-Inspector/actions/workflows/ci.yml/badge.svg)](https://github.com/mervanAksu/QT-Defect-Inspector/actions/workflows/ci.yml)
+
 Qt 6 + OpenCV ile yazılmış, Linux üzerinde çalışan **kamera izleme ve kusur tespit** uygulaması (C++17).
 Kameradan, video dosyasından ya da bir görüntü klasöründen kare alır; kareleri ayrı bir thread'de
 işleyip kumaş yüzeyindeki leke/yırtık benzeri kusurları bulur, sonucu arayüzde gösterir ve
@@ -199,6 +201,39 @@ Notlar:
   `QThread::wait()` gibi Qt içindeki senkronizasyonu göremediği için TSan, thread bittikten
   sonra yapılan temizliği bile yarış sanır. Bunun için Qt'yi `-sanitize thread` ile derlemek gerekir.
 
+### AddressSanitizer + UndefinedBehaviorSanitizer
+
+Bellek hataları (taşma, use-after-free), sızıntılar ve tanımsız davranış için **tüm** testler:
+
+```bash
+cmake -S . -B build-asan -G Ninja -DINSPECTOR_SANITIZER=address,undefined \
+      -DCMAKE_CXX_FLAGS=-fno-sanitize-recover=all
+cmake --build build-asan
+LSAN_OPTIONS="suppressions=$PWD/lsan.supp" ctest --test-dir build-asan --output-on-failure
+```
+
+ASan'ın bulduğu sızıntılar kodda iki iyileştirmeye yol açtı:
+
+- **Video dosyası açma:** Açılamayan bir dosya için OpenCV tüm arka uçları sırayla deniyordu
+  (GStreamer, gphoto2…). Bu yavaştı (~1 sn), konsola uyarı basıyordu ve o kütüphaneler bellek
+  sızdırıyordu. Artık önce dosyanın varlığı kontrol ediliyor, sonra yalnızca FFmpeg kullanılıyor.
+- **Proxy:** Qt soketleri varsayılanda sistemin HTTP proxy ayarını sorar. Yayıncı ve alıcı artık
+  `QNetworkProxy::NoProxy` kullanıyor: yerel ağdaki doğrudan bağlantı masaüstü ayarlarından etkilenmez.
+
+`lsan.supp` yalnızca testlerdeki düz `QTcpSocket` istemcilerinin tetiklediği libproxy'nin tek
+seferlik ayırmasını susturur.
+
+## Sürekli entegrasyon (GitHub Actions)
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) her push (main) ve pull request'te,
+geliştirme ortamıyla aynı dağıtımda (Ubuntu 24.04) üç iş çalıştırır:
+
+| İş | Ne yapar? |
+|---|---|
+| **Build & test** | Release derleme, tüm uyarılar hata (`-Werror`), tüm testler (C++ + Python) |
+| **AddressSanitizer + UBSan** | Tüm testler bellek hatası, sızıntı ve tanımsız davranış için |
+| **ThreadSanitizer** | `core_tests`: kuyruk ve thread'li kod data race için |
+
 ## Yol haritası
 
 - [x] Proje iskeleti, CMake, GoogleTest
@@ -210,7 +245,9 @@ Notlar:
 - [x] Sentetik kumaş örnekleri + uçtan uca tespit testleri
 - [x] TCP/UDP ile sonuç yayını (JSON Lines, `QTcpServer` / `QUdpSocket`) + ağ testleri
 - [x] Alıcı istemciler (C++/Qt ve Python), otomatik yeniden bağlanma + testleri
-- [ ] Sınırlamalar, CI
+- [x] GitHub Actions CI: `-Werror` derleme, ASan + UBSan, ThreadSanitizer
+- [ ] Sağlamlık: kaynak koparsa toparlanma, ayarların kaydı (`QSettings`)
+- [ ] Sınırlamalar ve son README
 
 ## Sınırlamalar
 
