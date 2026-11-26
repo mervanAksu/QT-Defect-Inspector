@@ -3,6 +3,7 @@
 #include "inspector/Protocol.h"
 
 #include <QDateTime>
+#include <QNetworkProxy>
 #include <QTcpSocket>
 
 #include <utility>
@@ -29,6 +30,10 @@ QString peerName(const QTcpSocket* socket)
 ResultPublisher::ResultPublisher(QObject* parent) : QObject(parent)
 {
     qRegisterMetaType<InspectionResult>();
+    // Yerel ağdaki makineler arası doğrudan bağlantı: masaüstünün HTTP proxy ayarları
+    // asla devreye girmemeli. (Varsayılanda Qt, her soket için sistem proxy'sini sorar.)
+    m_server.setProxy(QNetworkProxy::NoProxy);
+    m_udp.setProxy(QNetworkProxy::NoProxy);
     connect(&m_server, &QTcpServer::newConnection, this, &ResultPublisher::onNewConnection);
 }
 
