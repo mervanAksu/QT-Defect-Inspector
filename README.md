@@ -87,7 +87,7 @@ cmake --build build-tsan && ctest --test-dir build-tsan --output-on-failure
 - [x] Proje iskeleti, CMake, GoogleTest
 - [x] `ThreadSafeQueue` (producer–consumer) + testler
 - [x] `DefectDetector` (gri ton → blur → yerel arka plan farkı → eşikleme → kontur) + testler
-- [ ] `FrameSource` soyutlaması: kamera / video / görüntü klasörü
+- [x] `FrameSource` soyutlaması: kamera / video / görüntü klasörü + fabrika fonksiyonu
 - [ ] Capture ve processing thread'leri
 - [ ] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, log)
 - [ ] TCP/UDP ile sonuç yayını + receiver istemcisi
