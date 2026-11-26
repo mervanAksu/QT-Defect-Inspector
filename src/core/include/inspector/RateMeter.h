@@ -5,7 +5,13 @@
 
 namespace inspector {
 
-/// Kayan pencere ile olay hızı (ör. FPS) ölçer: son `window` süresindeki olay sayısı.
+/// Kayan pencere ile olay hızı (ör. FPS) ölçer.
+///
+/// Hız = (n - 1) / (en yeni - en eski olay zamanı), yalnızca son `window` içindeki
+/// olaylar üzerinden. "Penceredeki olay sayısı / pencere süresi" yaklaşımı pencere
+/// kenarlarına denk gelen olay yüzünden ±1 yanılır (5 FPS'i 6.0 gösterebilir);
+/// olaylar arası süreyi ölçmek bu hatayı ortadan kaldırır.
+///
 /// Thread-safe DEĞİL; tek bir thread'den (GUI) kullanılmak üzere tasarlandı.
 /// Zaman parametre olarak verilebildiği için gerçek saat beklemeden test edilebilir.
 class RateMeter {
@@ -20,12 +26,15 @@ public:
         evictOlderThan(now - m_window);
     }
 
-    /// Saniyedeki olay sayısı.
+    /// Saniyedeki olay sayısı. Pencerede 2'den az olay varsa 0.
     double rate(Clock::time_point now = Clock::now())
     {
         evictOlderThan(now - m_window);
-        const double seconds = std::chrono::duration<double>(m_window).count();
-        return static_cast<double>(m_ticks.size()) / seconds;
+        if (m_ticks.size() < 2) {
+            return 0.0;
+        }
+        const double span = std::chrono::duration<double>(m_ticks.back() - m_ticks.front()).count();
+        return span > 0.0 ? static_cast<double>(m_ticks.size() - 1) / span : 0.0;
     }
 
     void reset() { m_ticks.clear(); }

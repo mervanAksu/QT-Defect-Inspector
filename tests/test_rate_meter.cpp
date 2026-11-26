@@ -5,39 +5,54 @@
 using inspector::RateMeter;
 using namespace std::chrono_literals;
 
-TEST(RateMeterTest, EmptyMeterReportsZero)
-{
-    RateMeter meter;
-    EXPECT_DOUBLE_EQ(meter.rate(RateMeter::Clock::time_point{}), 0.0);
+namespace {
+const RateMeter::Clock::time_point t0{};
 }
 
-TEST(RateMeterTest, CountsTicksInsideTheWindow)
+TEST(RateMeterTest, NeedsAtLeastTwoTicks)
+{
+    RateMeter meter;
+    EXPECT_DOUBLE_EQ(meter.rate(t0), 0.0);
+    meter.tick(t0);
+    EXPECT_DOUBLE_EQ(meter.rate(t0 + 10ms), 0.0);
+}
+
+TEST(RateMeterTest, MeasuresRateFromTickSpacing)
 {
     RateMeter meter(1s);
-    const RateMeter::Clock::time_point t0{};
     for (int i = 0; i < 10; ++i) {
         meter.tick(t0 + i * 100ms);  // 10 Hz
     }
-    EXPECT_DOUBLE_EQ(meter.rate(t0 + 950ms), 10.0);
+    EXPECT_NEAR(meter.rate(t0 + 950ms), 10.0, 1e-9);
+}
+
+TEST(RateMeterTest, IsNotFooledByTicksOnTheWindowEdges)
+{
+    // 5 Hz akışta 1 sn'lik pencereye 6 olay (0, 200, ..., 1000 ms) sığabilir.
+    // "olay sayısı / pencere" 6.0 derdi; aralık tabanlı ölçüm 5.0 demeli.
+    RateMeter meter(1001ms);
+    for (int i = 0; i <= 5; ++i) {
+        meter.tick(t0 + i * 200ms);
+    }
+    EXPECT_NEAR(meter.rate(t0 + 1000ms), 5.0, 1e-9);
 }
 
 TEST(RateMeterTest, ForgetsTicksOlderThanTheWindow)
 {
     RateMeter meter(1s);
-    const RateMeter::Clock::time_point t0{};
     meter.tick(t0);
-    meter.tick(t0 + 500ms);
+    meter.tick(t0 + 100ms);
+    meter.tick(t0 + 600ms);
 
-    EXPECT_DOUBLE_EQ(meter.rate(t0 + 1200ms), 1.0);  // yalnızca 500ms'deki kaldı
-    EXPECT_DOUBLE_EQ(meter.rate(t0 + 3s), 0.0);
+    EXPECT_NEAR(meter.rate(t0 + 1050ms), 2.0, 1e-9);  // 0 atıldı: 100 -> 600 ms, 1 aralık
+    EXPECT_DOUBLE_EQ(meter.rate(t0 + 3s), 0.0);         // hepsi eskidi: akış durdu
 }
 
-TEST(RateMeterTest, ScalesByWindowLength)
+TEST(RateMeterTest, ResetClearsHistory)
 {
-    RateMeter meter(2s);
-    const RateMeter::Clock::time_point t0{};
-    for (int i = 0; i < 10; ++i) {
-        meter.tick(t0 + i * 100ms);
-    }
-    EXPECT_DOUBLE_EQ(meter.rate(t0 + 1s), 5.0);  // 10 olay / 2 sn
+    RateMeter meter;
+    meter.tick(t0);
+    meter.tick(t0 + 100ms);
+    meter.reset();
+    EXPECT_DOUBLE_EQ(meter.rate(t0 + 150ms), 0.0);
 }
