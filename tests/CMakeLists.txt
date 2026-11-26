@@ -4,9 +4,11 @@ include(GoogleTest)
 add_executable(core_tests
     test_thread_safe_queue.cpp
     test_defect_detector.cpp
-    test_frame_sources.cpp)
+    test_frame_sources.cpp
+    test_sample_images.cpp
+    test_rate_meter.cpp)
 
-target_link_libraries(core_tests PRIVATE inspector::core GTest::gtest_main)
+target_link_libraries(core_tests PRIVATE inspector::core inspector::samplegen GTest::gtest_main)
 inspector_set_warnings(core_tests)
 
 # Her TEST()'i ctest'e ayrı bir test olarak kaydeder.
@@ -22,3 +24,14 @@ inspector_set_warnings(pipeline_tests)
 
 add_test(NAME pipeline_tests COMMAND pipeline_tests)
 set_tests_properties(pipeline_tests PROPERTIES TIMEOUT 60)
+
+# --- Qt Test: GUI testleri (ekransız "offscreen" platformda) ------------------
+add_executable(ui_tests test_main_window.cpp)
+set_target_properties(ui_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(ui_tests PRIVATE inspector::ui inspector::samplegen Qt6::Test)
+inspector_set_warnings(ui_tests)
+
+add_test(NAME ui_tests COMMAND ui_tests)
+set_tests_properties(ui_tests PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
