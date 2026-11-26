@@ -1,0 +1,8 @@
+# ThreadSanitizer suppressions — ONLY for third-party libraries that Ubuntu does not
+# build with -fsanitize=thread. TSan cannot see their internal synchronization and
+# reports false positives. Never add our own code here.
+#
+# Usage:  TSAN_OPTIONS="suppressions=$PWD/tsan.supp" setarch -R ctest --test-dir build-tsan
+called_from_lib:libtbb.so.12
+called_from_lib:libgdal.so.34
+deadlock:libgdal.so.34
