@@ -17,7 +17,9 @@ endif()
 
 # --- Seçenekler ---------------------------------------------------------------
 option(INSPECTOR_BUILD_TESTS "Build GoogleTest unit tests" ON)
-set(INSPECTOR_SANITIZER "" CACHE STRING "Sanitizer to enable: '', address, thread")
+option(INSPECTOR_WARNINGS_AS_ERRORS "Treat compiler warnings as errors (-Werror)" OFF)
+set(INSPECTOR_SANITIZER "" CACHE STRING
+    "Sanitizers to enable, e.g. 'address,undefined' or 'thread' (empty = none)")
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
