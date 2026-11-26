@@ -34,6 +34,24 @@ inspector_set_warnings(net_tests)
 add_test(NAME net_tests COMMAND net_tests)
 set_tests_properties(net_tests PROPERTIES TIMEOUT 60)
 
+# --- Qt Test: alıcı istemci (yayıncıya localhost üzerinden bağlanır) ----------
+add_executable(receiver_tests test_receiver.cpp)
+set_target_properties(receiver_tests PROPERTIES AUTOMOC ON)
+target_link_libraries(receiver_tests PRIVATE inspector::receiver Qt6::Test)
+inspector_set_warnings(receiver_tests)
+
+add_test(NAME receiver_tests COMMAND receiver_tests)
+set_tests_properties(receiver_tests PROPERTIES TIMEOUT 60)
+
+# --- Python alıcı istemcisi (unittest, yalnızca standart kütüphane) -----------
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_FOUND)
+    add_test(NAME python_receiver_tests
+             COMMAND Python3::Interpreter -B -m unittest -v test_receiver
+             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/python)
+    set_tests_properties(python_receiver_tests PROPERTIES TIMEOUT 60)
+endif()
+
 # --- Qt Test: GUI testleri (ekransız "offscreen" platformda) ------------------
 add_executable(ui_tests test_main_window.cpp)
 set_target_properties(ui_tests PROPERTIES AUTOMOC ON)
