@@ -29,8 +29,9 @@ if(INSPECTOR_SANITIZER)
 endif()
 
 # --- Alt projeler -------------------------------------------------------------
-add_subdirectory(src/core)       # Qt'den bağımsız çekirdek (kuyruk, dedektör)
-# add_subdirectory(src/app)      # Qt Widgets uygulaması      (Gün 5-6)
+add_subdirectory(src/core)       # Qt'den bağımsız çekirdek (kuyruk, dedektör, kaynaklar)
+add_subdirectory(src/pipeline)   # Capture/processing thread'leri (Qt Core)
+# add_subdirectory(src/app)      # Qt Widgets uygulaması      (Gün 6)
 # add_subdirectory(src/receiver) # Sonuçları alan istemci     (Gün 8)
 
 if(INSPECTOR_BUILD_TESTS)

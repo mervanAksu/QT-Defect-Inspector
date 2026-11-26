@@ -11,25 +11,28 @@ TCP/UDP üzerinden başka bir istemciye gönderir.
 
 ```mermaid
 flowchart LR
-    subgraph CT["Capture thread (QThread)"]
-        FS["FrameSource<br/>kamera / video / klasör"] --> CW["CaptureWorker"]
+    subgraph CT["CaptureThread (QThread)"]
+        FS["FrameSource<br/>kamera / video / klasör"]
     end
 
-    CW -- "push(Frame)" --> Q[("ThreadSafeQueue<br/>mutex + condition_variable")]
+    FS -- "push(Frame)" --> Q[("ThreadSafeQueue<br/>mutex + condition_variable")]
 
-    subgraph PT["Processing thread (QThread)"]
-        PW["ProcessingWorker"] --> DD["DefectDetector<br/>OpenCV"]
+    subgraph PT["ProcessingThread (QThread)"]
+        DD["DefectDetector<br/>OpenCV"]
     end
 
-    Q -- "pop()" --> PW
+    Q -- "pop()" --> DD
 
     subgraph GT["Main / GUI thread"]
+        IP["InspectionPipeline"]
         MW["MainWindow<br/>Qt Widgets"]
         RP["ResultPublisher<br/>QTcpServer / QUdpSocket"]
     end
 
-    PW -- "resultReady<br/>Qt::QueuedConnection" --> MW
-    PW -- "resultReady<br/>Qt::QueuedConnection" --> RP
+    DD -- "frameProcessed<br/>Qt::QueuedConnection" --> IP
+    IP -- "resultReady" --> MW
+    IP -- "resultReady" --> RP
+    MW -. "setThreshold()<br/>std::atomic" .-> DD
     RP -- "JSON satırları" --> RC["receiver<br/>istemci"]
 ```
 
@@ -40,6 +43,11 @@ flowchart LR
   en eski kare atılır (drop-oldest) — canlı izlemede güncellik, eksiksizlikten önemlidir.
 - **Processing → GUI arasında signal/slot (`Qt::QueuedConnection`):** Qt widget'larına yalnızca
   ana thread'den dokunulabilir. Queued bağlantı, sonucu ana thread'in olay döngüsüne güvenle taşır.
+- **GUI → Processing yönünde `std::atomic<int>` eşik:** Tek bir tamsayı için kilit gereksiz.
+  `DefectDetector` nesnesi yalnızca processing thread'inde yaşar, hiç paylaşılmaz.
+- **Temiz kapanış:** `stop()` thread'lere kesme isteği gönderir, kuyruğu kapatarak `pop()`'ta
+  bekleyeni uyandırır ve `wait()` ile bitmelerini bekler. Kaynak kendiliğinden biterse üretici
+  kuyruğu kapatır, tüketici kalan kareleri işleyip çıkar.
 - **`core` kütüphanesi Qt'den bağımsız:** Kuyruk ve dedektör saf C++/OpenCV'dir; GUI olmadan
   GoogleTest ile test edilebilir ve başka bir uygulamada (ör. Jetson üzerinde konsol servis) yeniden kullanılabilir.
 
@@ -50,10 +58,11 @@ defect-inspector/
 ├── CMakeLists.txt          # kök CMake projesi
 ├── cmake/                  # yardımcı CMake modülleri (uyarılar vb.)
 ├── src/
-│   ├── core/               # Qt'siz çekirdek: ThreadSafeQueue, DefectDetector, DetectionResult
-│   ├── app/                # Qt Widgets uygulaması: MainWindow, worker'lar, ResultPublisher
+│   ├── core/               # Qt'siz çekirdek: ThreadSafeQueue, DefectDetector, FrameSource
+│   ├── pipeline/           # Qt Core: CaptureThread, ProcessingThread, InspectionPipeline
+│   ├── app/                # Qt Widgets uygulaması: MainWindow, ResultPublisher
 │   └── receiver/           # sonuçları dinleyen basit istemci
-├── tests/                  # GoogleTest birim testleri
+├── tests/                  # GoogleTest birim testleri + Qt Test entegrasyon testleri
 ├── samples/                # örnek kumaş görüntüleri / videoları
 ├── scripts/                # ortam kurulum betikleri
 └── docs/                   # ekran görüntüleri, ek dokümanlar
@@ -75,12 +84,25 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Data race avı için ThreadSanitizer ile:
+### ThreadSanitizer ile data race avı
 
 ```bash
 cmake -S . -B build-tsan -G Ninja -DINSPECTOR_SANITIZER=thread
-cmake --build build-tsan && ctest --test-dir build-tsan --output-on-failure
+setarch -R cmake --build build-tsan
+TSAN_OPTIONS="suppressions=$PWD/tsan.supp" setarch -R ./build-tsan/tests/core_tests
 ```
+
+Notlar:
+
+- **`setarch -R`**: Yeni Linux çekirdeklerinde (WSL2 dahil) adres rastgeleleştirmesi (ASLR)
+  GCC 13'ün TSan'ı ile uyumsuz ve program `unexpected memory mapping` hatasıyla açılmaz.
+  `setarch -R` ASLR'yi yalnızca o komut için kapatır; root gerekmez.
+- **`tsan.supp`**: TSan, kendisiyle derlenmemiş kütüphanelerin iç senkronizasyonunu göremez.
+  Dosya yalnızca bu üçüncü parti kütüphaneleri (OpenCV'nin kullandığı TBB ve GDAL) susturur.
+  Bununla `core_tests` (kuyruk testleri dahil 28 test) **sıfır uyarıyla** geçer.
+- **`pipeline_tests` TSan ile anlamlı değil:** Ubuntu'nun Qt paketi TSan ile derlenmemiştir.
+  `QThread::wait()` gibi Qt içindeki senkronizasyonu göremediği için TSan, thread bittikten
+  sonra yapılan temizliği bile yarış sanır. Bunun için Qt'yi `-sanitize thread` ile derlemek gerekir.
 
 ## Yol haritası
 
@@ -88,7 +110,7 @@ cmake --build build-tsan && ctest --test-dir build-tsan --output-on-failure
 - [x] `ThreadSafeQueue` (producer–consumer) + testler
 - [x] `DefectDetector` (gri ton → blur → yerel arka plan farkı → eşikleme → kontur) + testler
 - [x] `FrameSource` soyutlaması: kamera / video / görüntü klasörü + fabrika fonksiyonu
-- [ ] Capture ve processing thread'leri
+- [x] Capture ve processing thread'leri (`QThread`, queued signal/slot, atomik eşik) + Qt Test testleri
 - [ ] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, log)
 - [ ] TCP/UDP ile sonuç yayını + receiver istemcisi
 - [ ] Ekran görüntüleri, sınırlamalar, CI
