@@ -3,7 +3,8 @@ include(GoogleTest)
 
 add_executable(core_tests
     test_thread_safe_queue.cpp
-    test_defect_detector.cpp)
+    test_defect_detector.cpp
+    test_frame_sources.cpp)
 
 target_link_libraries(core_tests PRIVATE inspector::core GTest::gtest_main)
 inspector_set_warnings(core_tests)
