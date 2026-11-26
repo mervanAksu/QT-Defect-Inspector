@@ -2,6 +2,7 @@
 
 #include "inspector/InspectionPipeline.h"
 #include "inspector/RateMeter.h"
+#include "inspector/ResultPublisher.h"
 
 #include <QMainWindow>
 
@@ -36,6 +37,9 @@ public:
 
     void setSource(const QString& source);
     void setThreshold(int threshold);
+    /// Komut satırından ağ yayınını açmak için; arayüzdeki kutucukları işaretler.
+    void enableTcp(quint16 port);
+    void enableUdp(const QString& host, quint16 port);
 
 public slots:
     void start();
@@ -48,14 +52,19 @@ private slots:
     void onStopped();
     void onResult(const inspector::InspectionResult& result);
     void onError(const QString& message);
+    void onTcpToggled(bool enabled);
+    void onUdpToggled(bool enabled);
 
 private:
     QWidget* buildControlPanel();
+    QWidget* buildNetworkBox();
+    void updateNetworkStatus();
     void setRunningState(bool running);
     void resetStatistics();
     void appendLog(const QString& text, const QColor& color = {});
 
     InspectionPipeline m_pipeline;  // üye nesne: pencereyle birlikte yaşar ve ölür
+    ResultPublisher m_publisher;    // sonuçları TCP/UDP ile yayınlar (GUI thread'inde)
     RateMeter m_fpsMeter;
     std::uint64_t m_totalFrames = 0;
     std::uint64_t m_defectiveFrames = 0;
@@ -73,6 +82,12 @@ private:
     QLabel* m_latencyLabel = nullptr;
     QLabel* m_droppedLabel = nullptr;
     QLabel* m_defectsLabel = nullptr;
+    QCheckBox* m_tcpCheck = nullptr;
+    QSpinBox* m_tcpPortSpin = nullptr;
+    QCheckBox* m_udpCheck = nullptr;
+    QLineEdit* m_udpHostEdit = nullptr;
+    QSpinBox* m_udpPortSpin = nullptr;
+    QLabel* m_networkLabel = nullptr;
     QPlainTextEdit* m_logView = nullptr;
 };
 

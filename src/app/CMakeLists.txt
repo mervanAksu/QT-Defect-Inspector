@@ -9,7 +9,7 @@ add_library(inspector_ui STATIC
 add_library(inspector::ui ALIAS inspector_ui)
 set_target_properties(inspector_ui PROPERTIES AUTOMOC ON)
 target_include_directories(inspector_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(inspector_ui PUBLIC inspector::pipeline Qt6::Widgets)
+target_link_libraries(inspector_ui PUBLIC inspector::pipeline inspector::net Qt6::Widgets)
 inspector_set_warnings(inspector_ui)
 
 add_executable(defect_inspector main.cpp)

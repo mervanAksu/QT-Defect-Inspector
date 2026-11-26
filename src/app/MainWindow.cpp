@@ -6,7 +6,9 @@
 #include <QDateTime>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
+#include <QHostAddress>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -53,8 +55,22 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(&m_pipeline, &InspectionPipeline::resultReady, this, &MainWindow::onResult);
     connect(&m_pipeline, &InspectionPipeline::errorOccurred, this, &MainWindow::onError);
 
+    // Her sonuç ağa da gider. Pipeline ve publisher aynı (GUI) thread'inde: doğrudan bağlantı.
+    connect(&m_pipeline, &InspectionPipeline::resultReady, &m_publisher,
+            &ResultPublisher::publish);
+    connect(&m_publisher, &ResultPublisher::errorOccurred, this, &MainWindow::onError);
+    connect(&m_publisher, &ResultPublisher::clientConnected, this, [this](const QString& peer) {
+        appendLog(tr("TCP client connected: %1").arg(peer));
+        updateNetworkStatus();
+    });
+    connect(&m_publisher, &ResultPublisher::clientDisconnected, this, [this](const QString& peer) {
+        appendLog(tr("TCP client disconnected: %1").arg(peer));
+        updateNetworkStatus();
+    });
+
     resetStatistics();
     setRunningState(false);
+    updateNetworkStatus();
     statusBar()->showMessage(tr("Ready"));
     resize(1100, 720);
 }
@@ -131,6 +147,7 @@ QWidget* MainWindow::buildControlPanel()
     layout->addLayout(runRow);
     layout->addWidget(thresholdBox);
     layout->addWidget(statsBox);
+    layout->addWidget(buildNetworkBox());
     layout->addStretch(1);
 
     // --- Bağlantılar ---
@@ -151,6 +168,115 @@ QWidget* MainWindow::buildControlPanel()
     });
 
     return panel;
+}
+
+QWidget* MainWindow::buildNetworkBox()
+{
+    m_tcpCheck = new QCheckBox(tr("TCP server, port"));
+    m_tcpCheck->setObjectName("tcpCheck");
+    m_tcpPortSpin = new QSpinBox;
+    m_tcpPortSpin->setObjectName("tcpPortSpin");
+    m_tcpPortSpin->setRange(1, 65535);
+    m_tcpPortSpin->setValue(5555);
+
+    m_udpCheck = new QCheckBox(tr("UDP to"));
+    m_udpCheck->setObjectName("udpCheck");
+    m_udpHostEdit = new QLineEdit("127.0.0.1");
+    m_udpHostEdit->setObjectName("udpHostEdit");
+    m_udpPortSpin = new QSpinBox;
+    m_udpPortSpin->setObjectName("udpPortSpin");
+    m_udpPortSpin->setRange(1, 65535);
+    m_udpPortSpin->setValue(5556);
+
+    m_networkLabel = new QLabel;
+    m_networkLabel->setObjectName("networkLabel");
+    m_networkLabel->setWordWrap(true);
+
+    auto* box = new QGroupBox(tr("Network (JSON Lines)"));
+    auto* grid = new QGridLayout(box);
+    grid->addWidget(m_tcpCheck, 0, 0);
+    grid->addWidget(m_tcpPortSpin, 0, 1, 1, 2);
+    grid->addWidget(m_udpCheck, 1, 0);
+    grid->addWidget(m_udpHostEdit, 1, 1);
+    grid->addWidget(m_udpPortSpin, 1, 2);
+    grid->addWidget(m_networkLabel, 2, 0, 1, 3);
+    grid->setColumnStretch(1, 1);
+
+    connect(m_tcpCheck, &QCheckBox::toggled, this, &MainWindow::onTcpToggled);
+    connect(m_udpCheck, &QCheckBox::toggled, this, &MainWindow::onUdpToggled);
+    return box;
+}
+
+void MainWindow::enableTcp(quint16 port)
+{
+    m_tcpPortSpin->setValue(port);
+    m_tcpCheck->setChecked(true);  // toggled -> onTcpToggled
+}
+
+void MainWindow::enableUdp(const QString& host, quint16 port)
+{
+    m_udpHostEdit->setText(host);
+    m_udpPortSpin->setValue(port);
+    m_udpCheck->setChecked(true);
+}
+
+void MainWindow::onTcpToggled(bool enabled)
+{
+    if (enabled) {
+        const auto port = static_cast<quint16>(m_tcpPortSpin->value());
+        if (m_publisher.startTcpServer(port)) {
+            appendLog(tr("TCP server listening on port %1").arg(port));
+        } else {
+            // Hata errorOccurred ile loglandı. Kutucuğu geri al ama toggled tekrar
+            // tetiklenmesin diye sinyalleri geçici olarak engelle (RAII).
+            const QSignalBlocker blocker(m_tcpCheck);
+            m_tcpCheck->setChecked(false);
+        }
+    } else {
+        m_publisher.stopTcpServer();
+        appendLog(tr("TCP server stopped"));
+    }
+    m_tcpPortSpin->setEnabled(!m_tcpCheck->isChecked());
+    updateNetworkStatus();
+}
+
+void MainWindow::onUdpToggled(bool enabled)
+{
+    if (enabled) {
+        const QString host = m_udpHostEdit->text().trimmed();
+        QHostAddress address;
+        if (host.compare("localhost", Qt::CaseInsensitive) == 0) {
+            address = QHostAddress::LocalHost;
+        } else if (!address.setAddress(host)) {
+            onError(tr("Invalid UDP host address: %1").arg(host));
+            const QSignalBlocker blocker(m_udpCheck);
+            m_udpCheck->setChecked(false);
+            updateNetworkStatus();
+            return;
+        }
+        const auto port = static_cast<quint16>(m_udpPortSpin->value());
+        m_publisher.enableUdp(address, port);
+        appendLog(tr("Sending UDP datagrams to %1:%2").arg(address.toString()).arg(port));
+    } else {
+        m_publisher.disableUdp();
+        appendLog(tr("UDP sending stopped"));
+    }
+    const bool on = m_udpCheck->isChecked();
+    m_udpHostEdit->setEnabled(!on);
+    m_udpPortSpin->setEnabled(!on);
+    updateNetworkStatus();
+}
+
+void MainWindow::updateNetworkStatus()
+{
+    const QString tcp = m_publisher.isTcpListening()
+                            ? tr("TCP :%1, %n client(s)", nullptr, m_publisher.clientCount())
+                                  .arg(m_publisher.tcpPort())
+                            : tr("TCP off");
+    const QString udp = m_publisher.isUdpEnabled()
+                            ? tr("UDP to %1:%2").arg(m_udpHostEdit->text()).arg(m_udpPortSpin->value())
+                            : tr("UDP off");
+    m_networkLabel->setText(tcp + " | " + udp);
 }
 
 void MainWindow::setSource(const QString& source)
