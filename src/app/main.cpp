@@ -1,0 +1,65 @@
+#include "MainWindow.h"
+
+#include <QApplication>
+#include <QCommandLineParser>
+#include <QDir>
+#include <QTimer>
+
+#include <cstdio>
+
+int main(int argc, char* argv[])
+{
+    QApplication app(argc, argv);
+    QApplication::setApplicationName("Defect Inspector");
+    QApplication::setApplicationVersion(PROJECT_VERSION);
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Camera monitoring and fabric defect detection");
+    parser.addHelpOption();
+    parser.addVersionOption();
+    parser.addPositionalArgument("source", "Camera index (0), image folder or video file.");
+    const QCommandLineOption thresholdOption({"t", "threshold"}, "Detection threshold (0-255).",
+                                             "value");
+    const QCommandLineOption autostartOption({"s", "start"}, "Start inspecting immediately.");
+    const QCommandLineOption screenshotOption(
+        "screenshot", "Start, wait <ms>, save the window to <file> and quit (for docs).",
+        "file");
+    const QCommandLineOption delayOption("screenshot-delay", "Delay before the screenshot.", "ms",
+                                         "3000");
+    parser.addOption(thresholdOption);
+    parser.addOption(autostartOption);
+    parser.addOption(screenshotOption);
+    parser.addOption(delayOption);
+    parser.process(app);
+
+    inspector::MainWindow window;
+
+    // Kaynak verilmediyse depodaki örnek kumaş görüntülerini öner.
+    const QStringList args = parser.positionalArguments();
+    if (!args.isEmpty()) {
+        window.setSource(args.first());
+    } else if (QDir(INSPECTOR_SAMPLES_DIR).exists()) {
+        window.setSource(INSPECTOR_SAMPLES_DIR);
+    }
+    if (parser.isSet(thresholdOption)) {
+        window.setThreshold(parser.value(thresholdOption).toInt());
+    }
+
+    window.show();
+    if (parser.isSet(autostartOption) || parser.isSet(screenshotOption)) {
+        window.start();
+    }
+
+    // README ekran görüntülerini tekrarlanabilir şekilde üretmek için:
+    //   QT_QPA_PLATFORM=offscreen ./defect_inspector --screenshot docs/screenshot.png
+    if (parser.isSet(screenshotOption)) {
+        const QString file = parser.value(screenshotOption);
+        QTimer::singleShot(parser.value(delayOption).toInt(), &window, [&window, file] {
+            const bool ok = window.grab().save(file);
+            std::fprintf(ok ? stdout : stderr, "%s %s\n", ok ? "saved" : "cannot save",
+                         qPrintable(file));
+            QApplication::exit(ok ? 0 : 1);
+        });
+    }
+    return QApplication::exec();  // olay döngüsü: pencere kapanana kadar burada döner
+}
