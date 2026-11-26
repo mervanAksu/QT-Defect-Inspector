@@ -65,6 +65,7 @@ defect-inspector/
 ├── src/
 │   ├── core/               # Qt'siz çekirdek: ThreadSafeQueue, DefectDetector, FrameSource
 │   ├── pipeline/           # Qt Core: CaptureThread, ProcessingThread, InspectionPipeline
+│   ├── net/                # Qt Network: JSON Lines protokolü, LineBuffer, ResultPublisher
 │   ├── app/                # Qt Widgets uygulaması: MainWindow, ImageView, main.cpp
 │   └── receiver/           # sonuçları dinleyen basit istemci
 ├── tools/                  # sentetik kumaş görüntüsü üreteci (generate_samples)
@@ -110,6 +111,41 @@ WSL2'de (Windows 11) pencere WSLg sayesinde doğrudan Windows masaüstünde aç�
 QT_QPA_PLATFORM=offscreen ./build/src/app/defect_inspector --screenshot docs/screenshot.png
 ```
 
+## Ağ üzerinden sonuç yayını (TCP / UDP)
+
+Her işlenen kare için tek satırlık bir JSON mesajı yayınlanır (**JSON Lines**). Arayüzdeki
+"Network" bölümünden ya da komut satırından açılır:
+
+```bash
+./build/src/app/defect_inspector samples/fabric --start --tcp 5555 --udp 127.0.0.1:5556
+nc localhost 5555          # başka bir terminalde: canlı JSON satırları akar
+```
+
+```json
+{"type":"inspection","version":1,"frame":3,"sent_at":"2026-11-26T15:29:16.055Z",
+ "defect_count":1,"processing_ms":1.816,"latency_ms":2.094,"dropped_frames":0,
+ "image":{"width":640,"height":480},
+ "defects":[{"x":556,"y":127,"width":35,"height":48,"cx":572.76,"cy":150.31,"area":135}]}
+```
+
+*(Gerçekte her mesaj tek satırdır; burada okunabilirlik için bölündü.)*
+
+| | TCP sunucusu | UDP |
+|---|---|---|
+| Model | Bağlanan her istemciye gönderilir | Tek bir hedef adrese (ya da broadcast) |
+| Garanti | Güvenilir, sıralı | Kayıp olabilir, sıra garanti değil |
+| Çerçeveleme | `\n` ile (TCP bir bayt akışıdır, mesaj sınırı yoktur) | Her datagram = bir mesaj |
+| Ne zaman? | Kayıt/raporlama, her sonuç önemli | Canlı gösterge, en güncel değer önemli |
+
+Tasarım notları:
+
+- **Çerçeveleme:** Bir `read()` yarım mesaj ya da birden fazla mesaj getirebilir. `LineBuffer`
+  parçaları biriktirip yalnızca tamamlanmış satırları verir. 64 KiB'tan uzun satırları atar (bellek koruması).
+- **Yavaş istemci:** Okumayan bir istemcinin bekleyen verisi 1 MiB'ı aşarsa ona giden
+  mesajlar atlanır. Böylece tek bir istemci sunucunun belleğini şişiremez.
+- **Thread:** Qt soketleri asenkron (`write()` bloklamaz), bu yüzden yayıncı GUI thread'inde çalışır.
+- **Sürümleme:** Mesajlarda `version` alanı var. Alıcılar bilmedikleri sürümü reddeder.
+
 ### ThreadSanitizer ile data race avı
 
 ```bash
@@ -139,7 +175,8 @@ Notlar:
 - [x] Capture ve processing thread'leri (`QThread`, queued signal/slot, atomik eşik) + Qt Test testleri
 - [x] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, istatistikler, log) + GUI testleri
 - [x] Sentetik kumaş örnekleri + uçtan uca tespit testleri
-- [ ] TCP/UDP ile sonuç yayını + receiver istemcisi
+- [x] TCP/UDP ile sonuç yayını (JSON Lines, `QTcpServer` / `QUdpSocket`) + ağ testleri
+- [ ] Receiver istemcileri (C++ ve Python)
 - [ ] Sınırlamalar, CI
 
 ## Sınırlamalar

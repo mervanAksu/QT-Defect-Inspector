@@ -5,6 +5,8 @@
 #include "ImageView.h"
 #include "MainWindow.h"
 #include "SampleGenerator.h"
+#include "inspector/LineBuffer.h"
+#include "inspector/Protocol.h"
 
 #include <QCheckBox>
 #include <QLabel>
@@ -13,6 +15,8 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QSpinBox>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -36,6 +40,8 @@ private slots:
     void finiteSourceReturnsToIdleByItself();
     void invalidSourceIsLoggedAndStaysIdle();
     void sliderAndSpinBoxStayInSync();
+    void tcpCheckboxPublishesLiveResults();
+    void invalidUdpHostIsRejected();
 
 private:
     template <typename T>
@@ -147,6 +153,53 @@ void MainWindowTest::sliderAndSpinBoxStayInSync()
 
     spin->setValue(120);
     QCOMPARE(slider->value(), 120);
+}
+
+void MainWindowTest::tcpCheckboxPublishesLiveResults()
+{
+    // Boş bir port bul: işletim sistemine seçtir, sonra bırak.
+    quint16 port = 0;
+    {
+        QTcpServer probe;
+        QVERIFY(probe.listen(QHostAddress::LocalHost, 0));
+        port = probe.serverPort();
+    }
+    child<QSpinBox>("tcpPortSpin")->setValue(port);
+    child<QCheckBox>("tcpCheck")->setChecked(true);
+    QVERIFY(child<QLabel>("networkLabel")->text().contains(QString::number(port)));
+    QVERIFY(!child<QSpinBox>("tcpPortSpin")->isEnabled());
+
+    QTcpSocket client;
+    client.connectToHost(QHostAddress::LocalHost, port);
+    QTRY_VERIFY_WITH_TIMEOUT(child<QLabel>("networkLabel")->text().contains("1 client"), 3000);
+
+    child<QLineEdit>("sourceEdit")->setText(m_tmp.path());
+    QTest::mouseClick(child<QPushButton>("startButton"), Qt::LeftButton);
+
+    // Ekrandaki sonuçla aynı veri ağdan da gelmeli: iki örnekte de kusur var.
+    inspector::LineBuffer buffer;
+    std::optional<inspector::protocol::Message> first;
+    auto receive = [&] {
+        buffer.append(client.readAll());
+        if (const auto line = buffer.nextLine()) {
+            first = inspector::protocol::decode(*line);
+        }
+        return first.has_value();
+    };
+    QTRY_VERIFY_WITH_TIMEOUT(receive(), 3000);
+    QCOMPARE(first->frameIndex, quint64{0});
+    QVERIFY(first->defectCount > 0);
+    QCOMPARE(first->imageSize, QSize(640, 480));
+}
+
+void MainWindowTest::invalidUdpHostIsRejected()
+{
+    child<QLineEdit>("udpHostEdit")->setText("not-an-ip");
+    child<QCheckBox>("udpCheck")->setChecked(true);
+
+    QVERIFY(!child<QCheckBox>("udpCheck")->isChecked());  // geri alındı
+    QVERIFY(child<QLineEdit>("udpHostEdit")->isEnabled());
+    QVERIFY(child<QPlainTextEdit>("logView")->toPlainText().contains("Invalid UDP host"));
 }
 
 QTEST_MAIN(MainWindowTest)

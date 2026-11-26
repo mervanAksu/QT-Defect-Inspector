@@ -26,8 +26,14 @@ int main(int argc, char* argv[])
         "file");
     const QCommandLineOption delayOption("screenshot-delay", "Delay before the screenshot.", "ms",
                                          "3000");
+    const QCommandLineOption tcpOption("tcp", "Publish results via a TCP server on <port>.",
+                                       "port");
+    const QCommandLineOption udpOption("udp", "Send results as UDP datagrams to <host:port>.",
+                                       "host:port");
     parser.addOption(thresholdOption);
     parser.addOption(autostartOption);
+    parser.addOption(tcpOption);
+    parser.addOption(udpOption);
     parser.addOption(screenshotOption);
     parser.addOption(delayOption);
     parser.process(app);
@@ -43,6 +49,19 @@ int main(int argc, char* argv[])
     }
     if (parser.isSet(thresholdOption)) {
         window.setThreshold(parser.value(thresholdOption).toInt());
+    }
+    if (parser.isSet(tcpOption)) {
+        window.enableTcp(static_cast<quint16>(parser.value(tcpOption).toUInt()));
+    }
+    if (parser.isSet(udpOption)) {
+        // "host:port" -> son ':' işaretinden böl
+        const QString value = parser.value(udpOption);
+        const qsizetype colon = value.lastIndexOf(':');
+        if (colon <= 0) {
+            std::fprintf(stderr, "--udp expects host:port\n");
+            return 2;
+        }
+        window.enableUdp(value.left(colon), static_cast<quint16>(value.mid(colon + 1).toUInt()));
     }
 
     window.show();
