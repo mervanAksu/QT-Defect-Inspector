@@ -31,6 +31,7 @@ endif()
 # --- Alt projeler -------------------------------------------------------------
 add_subdirectory(src/core)       # Qt'den bağımsız çekirdek (kuyruk, dedektör, kaynaklar)
 add_subdirectory(src/pipeline)   # Capture/processing thread'leri (Qt Core)
+add_subdirectory(src/net)        # TCP/UDP sonuç yayını (JSON Lines)
 add_subdirectory(tools)          # Örnek görüntü üreteci
 add_subdirectory(src/app)        # Qt Widgets uygulaması: defect_inspector
 # add_subdirectory(src/receiver) # Sonuçları alan istemci     (Gün 8)
