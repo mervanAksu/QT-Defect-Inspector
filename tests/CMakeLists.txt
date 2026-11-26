@@ -2,7 +2,8 @@ find_package(GTest REQUIRED)
 include(GoogleTest)
 
 add_executable(core_tests
-    test_thread_safe_queue.cpp)
+    test_thread_safe_queue.cpp
+    test_defect_detector.cpp)
 
 target_link_libraries(core_tests PRIVATE inspector::core GTest::gtest_main)
 inspector_set_warnings(core_tests)
