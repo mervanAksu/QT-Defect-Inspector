@@ -67,7 +67,8 @@ defect-inspector/
 │   ├── pipeline/           # Qt Core: CaptureThread, ProcessingThread, InspectionPipeline
 │   ├── net/                # Qt Network: JSON Lines protokolü, LineBuffer, ResultPublisher
 │   ├── app/                # Qt Widgets uygulaması: MainWindow, ImageView, main.cpp
-│   └── receiver/           # sonuçları dinleyen basit istemci
+│   └── receiver/           # C++ konsol istemcisi: ReceiverClient, defect_receiver
+├── python/                 # Python alıcı istemcisi (yalnızca standart kütüphane) + testleri
 ├── tools/                  # sentetik kumaş görüntüsü üreteci (generate_samples)
 ├── tests/                  # GoogleTest birim testleri + Qt Test entegrasyon/GUI testleri
 ├── samples/fabric/         # 12 örnek kumaş görüntüsü + labels.csv (beklenen kusur sayıları)
@@ -146,6 +147,38 @@ Tasarım notları:
 - **Thread:** Qt soketleri asenkron (`write()` bloklamaz), bu yüzden yayıncı GUI thread'inde çalışır.
 - **Sürümleme:** Mesajlarda `version` alanı var. Alıcılar bilmedikleri sürümü reddeder.
 
+### Alıcı istemciler
+
+Aynı çıktıyı üreten iki istemci var: biri C++/Qt, diğeri yalnızca standart kütüphaneyi
+kullanan Python (`pip install` gerekmez; ör. hat yanındaki bir Raspberry Pi'de çalışabilir).
+
+```bash
+./build/src/receiver/defect_receiver --port 5555 --only-defects
+python3 python/receiver.py --port 5555 --csv defects.csv
+python3 python/receiver.py --udp 5556
+```
+
+```text
+connecting to 127.0.0.1:5555
+error: Connection refused
+reconnecting in 1 s
+error: Connection refused
+reconnecting in 2 s
+connected
+#8      2 defect(s)  largest 107 px² @ (50,68)  latency 2.0 ms
+#9      3 defect(s)  largest 567 px² @ (313,155)  latency 1.6 ms
+#10     OK  latency 1.9 ms
+```
+
+- **Otomatik yeniden bağlanma:** Sunucu yoksa ya da bağlantı koparsa bekleme süresi her denemede
+  ikiye katlanır (1 → 2 → 4 … en fazla 30 s), başarılı bağlantıda başa döner. Sabit aralıkla
+  deneyen yüzlerce istemci, yeniden açılan sunucuyu aynı anda boğabilir ("thundering herd").
+- **Hatalı mesaj bağlantıyı kesmez:** Çözülemeyen satırlar sayılır ve raporlanır, akış devam eder.
+- **Ctrl+C:** Her iki istemci de düzgün çıkar ve özet basar. C++'ta sinyal işleyicisi yalnızca
+  bir bayrak kaldırır (async-signal-safe), çıkışı olay döngüsü yapar.
+- `--count N` ile N mesaj sonra çıkılır (betikler/testler için). Python istemcisi `--csv` ile
+  her mesajı bir dosyaya da kaydeder.
+
 ### ThreadSanitizer ile data race avı
 
 ```bash
@@ -176,7 +209,7 @@ Notlar:
 - [x] Qt Widgets arayüzü (canlı görüntü, start/stop, eşik, istatistikler, log) + GUI testleri
 - [x] Sentetik kumaş örnekleri + uçtan uca tespit testleri
 - [x] TCP/UDP ile sonuç yayını (JSON Lines, `QTcpServer` / `QUdpSocket`) + ağ testleri
-- [ ] Receiver istemcileri (C++ ve Python)
+- [x] Alıcı istemciler (C++/Qt ve Python), otomatik yeniden bağlanma + testleri
 - [ ] Sınırlamalar, CI
 
 ## Sınırlamalar
